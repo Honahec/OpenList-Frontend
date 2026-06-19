@@ -611,6 +611,8 @@
   },
   "FTP": {
     "address": "Address",
+    "cwd_list": "Use Cwd to list",
+    "cwd_list-tips": "Enter directory before listing",
     "encoding": "Encoding",
     "password": "Password",
     "root_folder_path": "Root folder path",
