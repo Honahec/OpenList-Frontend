@@ -40,7 +40,7 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
-          token: ${{ secrets.BOT_TOKEN }}
+          token: ${{ secrets.BOT_TOKEN || github.token }}
 
       - name: Validate and trim semver
         id: semver
@@ -115,9 +115,9 @@ jobs:
           fi
 
           # Add back the current tag if is a pre-release
-          # Should not add `-f`, as it will overwrite the existing tag
+          # A lightweight tag avoids requiring the upstream signing key in forks.
           if [[ "${{ steps.check_pre_release.outputs.is_pre_release }}" == "true" ]]; then
-            git tag -s "$CURRENT_TAG" -m "Release $CURRENT_TAG"
+            git tag "$CURRENT_TAG"
           fi
 
       - name: Generate changelog

@@ -1,6 +1,23 @@
 import { Upload, SetUpload } from "./types"
 import { r, pathDir } from "~/utils"
 
+type DirectUploadInfo = {
+  upload_url?: string
+  chunk_size?: number
+  headers?: Record<string, string>
+  method?: string
+  finalize?: boolean
+  multipart?: {
+    upload_id: string
+  }
+}
+
+type DirectUploadPartInfo = {
+  upload_url: string
+  headers?: Record<string, string>
+  method?: string
+}
+
 // Create a speed calculator using closure
 function createSpeedCalculator(throttleMs = 500) {
   let lastLoaded = 0
@@ -45,7 +62,7 @@ export const HttpDirectUpload: Upload = async (
     },
   )
 
-  const uploadInfo = resp.data
+  const uploadInfo = resp.data as DirectUploadInfo
 
   // If upload_info is null, direct upload is not supported - fallback to Stream
   if (!uploadInfo) {
@@ -57,10 +74,24 @@ export const HttpDirectUpload: Upload = async (
   const uploadURL = uploadInfo.upload_url
   const method = uploadInfo.method || "PUT"
 
+  if (uploadInfo.multipart) {
+    return await uploadMultipart(
+      path,
+      file,
+      chunkSize,
+      uploadInfo.multipart.upload_id,
+      setUpload,
+    )
+  }
+
+  if (!uploadURL) {
+    throw new Error("Direct upload URL is missing")
+  }
+
   if (chunkSize > 0) {
     // Always use chunked upload when chunkSize is provided
     // This ensures Content-Range header is set for all files
-    return await uploadChunked(
+    await uploadChunked(
       file,
       uploadURL,
       chunkSize,
@@ -70,14 +101,124 @@ export const HttpDirectUpload: Upload = async (
     )
   } else {
     // Single upload for drivers that don't support chunking
-    return await uploadSingle(
-      file,
-      uploadURL,
-      method,
-      uploadInfo.headers,
-      setUpload,
-    )
+    await uploadSingle(file, uploadURL, method, uploadInfo.headers, setUpload)
   }
+
+  if (uploadInfo.finalize) {
+    await completeDirectUpload(path, file)
+  }
+
+  return undefined
+}
+
+async function uploadMultipart(
+  path: string,
+  file: File,
+  chunkSize: number,
+  uploadID: string,
+  setUpload?: SetUpload,
+): Promise<undefined> {
+  if (chunkSize <= 0 || !uploadID) {
+    throw new Error("Invalid multipart direct upload session")
+  }
+
+  const totalParts = Math.ceil(file.size / chunkSize)
+  const calcSpeed = createSpeedCalculator()
+  let uploadedBytes = 0
+
+  try {
+    for (let i = 0; i < totalParts; i++) {
+      const start = i * chunkSize
+      const end = Math.min(start + chunkSize, file.size)
+      const part = file.slice(start, end)
+      const resp = await r.post("/fs/get_direct_upload_part_info", {
+        path,
+        file_name: file.name,
+        file_size: file.size,
+        upload_id: uploadID,
+        part_number: i + 1,
+      })
+      const partInfo = resp.data as DirectUploadPartInfo
+      if (!partInfo?.upload_url) {
+        throw new Error(`Upload URL for part ${i + 1} is missing`)
+      }
+      await uploadPart(
+        part,
+        partInfo.upload_url,
+        partInfo.method || "PUT",
+        partInfo.headers,
+        uploadedBytes,
+        file.size,
+        calcSpeed,
+        setUpload,
+      )
+      uploadedBytes += part.size
+    }
+
+    await completeDirectUpload(path, file, uploadID)
+    return undefined
+  } catch (error) {
+    try {
+      await r.post("/fs/abort_direct_upload", {
+        path,
+        file_name: file.name,
+        upload_id: uploadID,
+      })
+    } catch {
+      // Preserve the original upload error when cleanup also fails.
+    }
+    throw error
+  }
+}
+
+async function completeDirectUpload(
+  path: string,
+  file: File,
+  uploadID = "",
+): Promise<void> {
+  await r.post("/fs/complete_direct_upload", {
+    path,
+    file_name: file.name,
+    file_size: file.size,
+    upload_id: uploadID,
+  })
+}
+
+async function uploadPart(
+  part: Blob,
+  uploadURL: string,
+  method: string,
+  headers: Record<string, string> | undefined,
+  uploadedBytes: number,
+  totalBytes: number,
+  calcSpeed: ReturnType<typeof createSpeedCalculator>,
+  setUpload?: SetUpload,
+): Promise<void> {
+  const xhr = new XMLHttpRequest()
+  await new Promise<void>((resolve, reject) => {
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable && setUpload) {
+        const totalLoaded = uploadedBytes + e.loaded
+        setUpload("progress", (totalLoaded / totalBytes) * 100)
+        calcSpeed(totalLoaded, setUpload)
+      }
+    })
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve()
+      } else {
+        reject(new Error(`Upload part failed with status ${xhr.status}`))
+      }
+    })
+    xhr.addEventListener("error", () => reject(new Error("Upload part failed")))
+    xhr.open(method, uploadURL)
+    if (headers) {
+      Object.entries(headers).forEach(([key, value]) => {
+        xhr.setRequestHeader(key, value)
+      })
+    }
+    xhr.send(part)
+  })
 }
 
 async function uploadSingle(
