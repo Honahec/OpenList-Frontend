@@ -46,6 +46,13 @@ const AddOrEdit = () => {
       <Heading mb="$2">{t(`global.${id ? "edit" : "add"}`)}</Heading>
       <ResponsiveGrid>
         <Item
+          name="collect"
+          type={Type.Bool}
+          value={share.collect}
+          valid
+          onChange={(v) => setShare("collect", v)}
+        />
+        <Item
           name="id"
           type={Type.String}
           value={id ? ((share as ShareUpdate).new_id ?? id) : (share.id ?? "")}

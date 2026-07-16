@@ -13,6 +13,7 @@ export interface Share {
   remark: string
   readme: string
   header: string
+  collect: boolean
 }
 
 export interface ShareUpdate extends Share {

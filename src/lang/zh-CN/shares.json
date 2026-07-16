@@ -1,0 +1,58 @@
+{
+  "expires": "过期时间",
+  "id": "ID",
+  "id_placeholder": "自定义ID（可选，留空则随机生成）",
+  "accessed": "访问次数",
+  "max_accessed": "最大访问次数",
+  "pwd": "分享码",
+  "files": "分享路径",
+  "files_etc": " 与其它 {{more}} 个",
+  "files_placeholder": "输入文件或文件夹路径，每行一个",
+  "add_path": "添加路径",
+  "creator": "创建者",
+  "status": "状态",
+  "status_list": {
+    "disabled": "已禁用",
+    "invalid": "已失效",
+    "work": "正常",
+    "denied": "无权限"
+  },
+  "remark": "备注",
+  "readme": "说明",
+  "header": "顶部说明",
+  "order_by": "排序依据",
+  "order_bys": {
+    "name": "名称",
+    "size": "大小",
+    "modified": "修改时间"
+  },
+  "order_direction": "排序方向",
+  "order_directions": {
+    "asc": "升序",
+    "desc": "降序"
+  },
+  "extract_folder": "文件夹顺序",
+  "extract_folders": {
+    "front": "文件夹置顶",
+    "back": "文件夹置底"
+  },
+  "input_password": "请输入分享码",
+  "copy_msg": "复制链接",
+  "collect": "文件收集模式",
+  "copy_collection_link": "复制收集链接",
+  "collection": {
+    "title": "文件收集",
+    "password_tip": "请输入收集码；未设置收集码时可直接继续。",
+    "open": "打开收集页面",
+    "description": "请将文件上传到此处，其他访客无法查看已经收集的文件。",
+    "remaining": "剩余可上传次数：{{count}}",
+    "start": "开始上传",
+    "status": {
+      "pending": "等待上传",
+      "uploading": "上传中",
+      "success": "上传成功",
+      "error": "上传失败"
+    }
+  },
+  "no_permission_tip": "创建分享需要启用“分享”权限。"
+}

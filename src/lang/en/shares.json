@@ -38,5 +38,21 @@
   },
   "input_password": "Please enter Share Code",
   "copy_msg": "Copy link",
+  "collect": "File collection mode",
+  "copy_collection_link": "Copy collection link",
+  "collection": {
+    "title": "File collection",
+    "password_tip": "Enter the collection code. If no code is configured, continue without entering one.",
+    "open": "Open collection",
+    "description": "Upload files here. Other visitors cannot view files that have already been collected.",
+    "remaining": "Remaining uploads: {{count}}",
+    "start": "Start upload",
+    "status": {
+      "pending": "Pending",
+      "uploading": "Uploading",
+      "success": "Uploaded",
+      "error": "Failed"
+    }
+  },
   "no_permission_tip": "To create a share, you need \"Share\" permission."
 }

@@ -8,6 +8,7 @@ import {
   matchTemplate,
   notify,
   r,
+  base_path,
 } from "~/utils"
 import { DeletePopover } from "../common/DeletePopover"
 import { getSetting, me } from "~/store"
@@ -141,21 +142,35 @@ export function ShareListItem(props: ShareProps) {
       <Td>{props.share.remark}</Td>
       <Td>
         <HStack spacing="$2">
-          <Button
-            colorScheme="primary"
-            onClick={() => {
-              const templateData = makeTemplateData(props.share, {
-                site_title: getSetting("site_title"),
-              })
-              const msg = matchTemplate(
-                getSetting("share_summary_content"),
-                templateData,
-              )
-              copy(msg)
-            }}
-          >
-            {t("shares.copy_msg")}
-          </Button>
+          <Show when={props.share.collect}>
+            <Button
+              colorScheme="accent"
+              onClick={() =>
+                copy(
+                  `${window.location.origin}${base_path}/@c/${props.share.id}`,
+                )
+              }
+            >
+              {t("shares.copy_collection_link")}
+            </Button>
+          </Show>
+          <Show when={!props.share.collect}>
+            <Button
+              colorScheme="primary"
+              onClick={() => {
+                const templateData = makeTemplateData(props.share, {
+                  site_title: getSetting("site_title"),
+                })
+                const msg = matchTemplate(
+                  getSetting("share_summary_content"),
+                  templateData,
+                )
+                copy(msg)
+              }}
+            >
+              {t("shares.copy_msg")}
+            </Button>
+          </Show>
           <ShareOp {...props} />
         </HStack>
       </Td>
