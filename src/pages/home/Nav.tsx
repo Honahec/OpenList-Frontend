@@ -12,13 +12,14 @@ import { getSetting, local } from "~/store"
 import { encodePath, hoverColor, joinBase } from "~/utils"
 
 export const Nav = () => {
-  const { pathname, isShare } = useRouter()
+  const { pathname, isShare, isCollection } = useRouter()
   const paths = createMemo(() => {
-    if (!isShare()) {
+    if (!isShare() && !isCollection()) {
       return ["", ...pathname().split("/").filter(Boolean)]
     } else {
       const p = pathname().split("/").filter(Boolean)
-      return [`@s/${p[1] ?? ""}`, ...p.slice(2)]
+      const prefix = isCollection() ? "@c" : "@s"
+      return [`${prefix}/${p[1] ?? ""}`, ...p.slice(2)]
     }
   })
   const t = useT()
@@ -64,8 +65,10 @@ export const Nav = () => {
             .join("/")
           const href = encodePath(path)
           let text = () => name
-          if (!isShare() && text() === "") {
+          if (!isShare() && !isCollection() && text() === "") {
             text = () => getSetting("home_icon") + t("manage.sidemenu.home")
+          } else if (isCollection() && i() === 0) {
+            text = () => t("shares.collection.title")
           } else if (isShare() && i() === 0) {
             text = () => getSetting("share_icon") + t("manage.sidemenu.shares")
           }

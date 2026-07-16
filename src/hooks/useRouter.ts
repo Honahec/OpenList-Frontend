@@ -20,6 +20,9 @@ const useRouter = () => {
   const isShare = createMemo(() => {
     return pathname().startsWith("/@s")
   })
+  const isCollection = createMemo(() => {
+    return pathname().startsWith("/@c")
+  })
   return {
     to: (
       path: string,
@@ -49,6 +52,7 @@ const useRouter = () => {
     },
     pathname: pathname,
     isShare: isShare,
+    isCollection: isCollection,
     search: location.search,
     searchParams: location.query,
     setSearchParams: (

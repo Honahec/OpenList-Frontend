@@ -23,7 +23,7 @@ export const Right = () => {
   const margin = createMemo(() => (isOpen() ? "$4" : "$5"))
   const isFolder = createMemo(() => objStore.state === State.Folder)
   const { refresh } = usePath()
-  const { isShare } = useRouter()
+  const { isShare, isCollection } = useRouter()
   return (
     <Box
       class="left-toolbar-box"
@@ -64,6 +64,7 @@ export const Right = () => {
               when={
                 isFolder() &&
                 !isShare() &&
+                !isCollection() &&
                 (userCan("write_content") || objStore.write_content_bypass) &&
                 objStore.write
               }
@@ -93,7 +94,11 @@ export const Right = () => {
             </Show>
             <Show
               when={
-                isFolder() && !isShare() && userCan("move") && objStore.write
+                isFolder() &&
+                !isShare() &&
+                !isCollection() &&
+                userCan("move") &&
+                objStore.write
               }
             >
               <RightIcon
@@ -106,7 +111,11 @@ export const Right = () => {
             </Show>
             <Show
               when={
-                isFolder() && !isShare() && userCan("delete") && objStore.write
+                isFolder() &&
+                !isShare() &&
+                !isCollection() &&
+                userCan("delete") &&
+                objStore.write
               }
             >
               <RightIcon
@@ -119,7 +128,11 @@ export const Right = () => {
             </Show>
             <Show
               when={
-                isFolder() && !isShare() && userCan("rename") && objStore.write
+                isFolder() &&
+                !isShare() &&
+                !isCollection() &&
+                userCan("rename") &&
+                objStore.write
               }
             >
               <RightIcon
@@ -151,6 +164,7 @@ export const Right = () => {
               when={
                 isFolder() &&
                 !isShare() &&
+                !isCollection() &&
                 userCan("offline_download") &&
                 objStore.write
               }

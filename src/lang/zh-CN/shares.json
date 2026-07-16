@@ -42,6 +42,7 @@
   "copy_collection_link": "复制收集链接",
   "collection": {
     "title": "文件收集",
+    "input_code": "请输入收集码",
     "password_tip": "请输入收集码；未设置收集码时可直接继续。",
     "open": "打开收集页面",
     "description": "请将文件上传到此处，其他访客无法查看已经收集的文件。",

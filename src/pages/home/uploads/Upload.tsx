@@ -75,7 +75,7 @@ const UploadFile = (props: UploadFileProps) => {
 
 const Upload = () => {
   const t = useT()
-  const { pathname } = useRouter()
+  const { pathname, isCollection } = useRouter()
   const { refresh } = usePath()
   const [drag, setDrag] = createSignal(false)
   const [uploading, setUploading] = createSignal(false)
@@ -298,35 +298,37 @@ const Upload = () => {
                 </Text>
               </VStack>
             </HStack>
-            <Stack
-              spacing={{ "@initial": "$2", "@md": "$4" }}
-              direction={{ "@initial": "column", "@md": "row" }}
-            >
-              <Checkbox
-                checked={uploadConfig.asTask}
-                onChange={() => {
-                  setUploadConfig({ asTask: !uploadConfig.asTask })
-                }}
+            <Show when={!isCollection()}>
+              <Stack
+                spacing={{ "@initial": "$2", "@md": "$4" }}
+                direction={{ "@initial": "column", "@md": "row" }}
               >
-                {t("home.upload.add_as_task")}
-              </Checkbox>
-              <Checkbox
-                checked={uploadConfig.overwrite}
-                onChange={() => {
-                  setUploadConfig({ overwrite: !uploadConfig.overwrite })
-                }}
-              >
-                {t("home.conflict_policy.overwrite_existing")}
-              </Checkbox>
-              <Checkbox
-                checked={uploadConfig.rapid}
-                onChange={() => {
-                  setUploadConfig({ rapid: !uploadConfig.rapid })
-                }}
-              >
-                {t("home.upload.try_rapid")}
-              </Checkbox>
-            </Stack>
+                <Checkbox
+                  checked={uploadConfig.asTask}
+                  onChange={() => {
+                    setUploadConfig({ asTask: !uploadConfig.asTask })
+                  }}
+                >
+                  {t("home.upload.add_as_task")}
+                </Checkbox>
+                <Checkbox
+                  checked={uploadConfig.overwrite}
+                  onChange={() => {
+                    setUploadConfig({ overwrite: !uploadConfig.overwrite })
+                  }}
+                >
+                  {t("home.conflict_policy.overwrite_existing")}
+                </Checkbox>
+                <Checkbox
+                  checked={uploadConfig.rapid}
+                  onChange={() => {
+                    setUploadConfig({ rapid: !uploadConfig.rapid })
+                  }}
+                >
+                  {t("home.upload.try_rapid")}
+                </Checkbox>
+              </Stack>
+            </Show>
           </Show>
         </VStack>
       </Show>

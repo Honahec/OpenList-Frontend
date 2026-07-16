@@ -35,7 +35,7 @@ export { objBoxRef }
 export const Obj = () => {
   const t = useT()
   const cardBg = useColorModeValue("white", "$neutral3")
-  const { pathname, searchParams, isShare, to } = useRouter()
+  const { pathname, searchParams, isShare, isCollection, to } = useRouter()
   const { handlePathChange, refresh } = usePath()
   const pagination = getPagination()
   const page = createMemo(() => {
@@ -111,15 +111,17 @@ export const Obj = () => {
           <Match when={objStore.state === State.NeedPassword}>
             <Password
               title={
-                isShare()
-                  ? t("shares.input_password")
-                  : t("home.input_password")
+                isCollection()
+                  ? t("shares.collection.input_code")
+                  : isShare()
+                    ? t("shares.input_password")
+                    : t("home.input_password")
               }
               password={password}
               setPassword={setPassword}
               enterCallback={() => refresh(true)}
             >
-              <Show when={!isShare()}>
+              <Show when={!isShare() && !isCollection()}>
                 <Text>{t("global.have_account")}</Text>
                 <Text
                   color="$info9"

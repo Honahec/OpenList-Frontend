@@ -1,5 +1,6 @@
 import { Upload, SetUpload } from "./types"
 import { r, pathDir } from "~/utils"
+import { password } from "~/store"
 
 type DirectUploadInfo = {
   upload_url?: string
@@ -16,6 +17,22 @@ type DirectUploadPartInfo = {
   upload_url: string
   headers?: Record<string, string>
   method?: string
+}
+
+type UploadContext = {
+  path: string
+  fileName: string
+  collection?: {
+    id: string
+    token: string
+    session: string
+  }
+}
+
+const collectionUpload = (uploadPath: string) => {
+  const match = uploadPath.match(/^\/@c\/([^/]+)\/(.+)$/)
+  if (!match) return
+  return { id: match[1], fileName: match[2] }
 }
 
 // Create a speed calculator using closure
@@ -45,24 +62,56 @@ export const HttpDirectUpload: Upload = async (
   _rapid: boolean,
 ) => {
   const path = pathDir(uploadPath)
+  const collection = collectionUpload(uploadPath)
 
   // Get direct upload info from backend
-  const resp = await r.post(
-    "/fs/get_direct_upload_info",
-    {
-      path,
-      file_name: file.name,
-      file_size: file.size,
-      tool: "HttpDirect",
-    },
-    {
-      headers: {
-        Overwrite: overwrite,
-      },
-    },
-  )
+  const resp: any = collection
+    ? await r.post(
+        `/public/collection/${collection.id}/get_direct_upload_info`,
+        {
+          password: password(),
+          file_name: collection.fileName,
+          file_size: file.size,
+        },
+      )
+    : await r.post(
+        "/fs/get_direct_upload_info",
+        {
+          path,
+          file_name: file.name,
+          file_size: file.size,
+          tool: "HttpDirect",
+        },
+        {
+          headers: {
+            Overwrite: overwrite,
+          },
+        },
+      )
 
-  const uploadInfo = resp.data as DirectUploadInfo
+  if (resp.code !== 200) {
+    throw new Error(resp.message)
+  }
+
+  let uploadInfo: DirectUploadInfo
+  const context: UploadContext = { path, fileName: file.name }
+  if (collection) {
+    const data = resp.data as {
+      file_name: string
+      upload_token: string
+      upload_session: string
+      upload_info: DirectUploadInfo
+    }
+    uploadInfo = data.upload_info
+    context.fileName = data.file_name
+    context.collection = {
+      id: collection.id,
+      token: data.upload_token,
+      session: data.upload_session,
+    }
+  } else {
+    uploadInfo = resp.data as DirectUploadInfo
+  }
 
   // If upload_info is null, direct upload is not supported - fallback to Stream
   if (!uploadInfo) {
@@ -76,7 +125,7 @@ export const HttpDirectUpload: Upload = async (
 
   if (uploadInfo.multipart) {
     return await uploadMultipart(
-      path,
+      context,
       file,
       chunkSize,
       uploadInfo.multipart.upload_id,
@@ -105,14 +154,14 @@ export const HttpDirectUpload: Upload = async (
   }
 
   if (uploadInfo.finalize) {
-    await completeDirectUpload(path, file)
+    await completeDirectUpload(context, file)
   }
 
   return undefined
 }
 
 async function uploadMultipart(
-  path: string,
+  context: UploadContext,
   file: File,
   chunkSize: number,
   uploadID: string,
@@ -131,13 +180,27 @@ async function uploadMultipart(
       const start = i * chunkSize
       const end = Math.min(start + chunkSize, file.size)
       const part = file.slice(start, end)
-      const resp = await r.post("/fs/get_direct_upload_part_info", {
-        path,
-        file_name: file.name,
-        file_size: file.size,
-        upload_id: uploadID,
-        part_number: i + 1,
-      })
+      const resp: any = context.collection
+        ? await r.post(
+            `/public/collection/${context.collection.id}/get_direct_upload_part_info`,
+            {
+              password: password(),
+              file_name: context.fileName,
+              file_size: file.size,
+              upload_id: uploadID,
+              upload_token: context.collection.token,
+              upload_session: context.collection.session,
+              part_number: i + 1,
+            },
+          )
+        : await r.post("/fs/get_direct_upload_part_info", {
+            path: context.path,
+            file_name: context.fileName,
+            file_size: file.size,
+            upload_id: uploadID,
+            part_number: i + 1,
+          })
+      if (resp.code !== 200) throw new Error(resp.message)
       const partInfo = resp.data as DirectUploadPartInfo
       if (!partInfo?.upload_url) {
         throw new Error(`Upload URL for part ${i + 1} is missing`)
@@ -155,15 +218,29 @@ async function uploadMultipart(
       uploadedBytes += part.size
     }
 
-    await completeDirectUpload(path, file, uploadID)
+    await completeDirectUpload(context, file, uploadID)
     return undefined
   } catch (error) {
     try {
-      await r.post("/fs/abort_direct_upload", {
-        path,
-        file_name: file.name,
-        upload_id: uploadID,
-      })
+      if (context.collection) {
+        await r.post(
+          `/public/collection/${context.collection.id}/abort_direct_upload`,
+          {
+            password: password(),
+            file_name: context.fileName,
+            file_size: file.size,
+            upload_id: uploadID,
+            upload_token: context.collection.token,
+            upload_session: context.collection.session,
+          },
+        )
+      } else {
+        await r.post("/fs/abort_direct_upload", {
+          path: context.path,
+          file_name: context.fileName,
+          upload_id: uploadID,
+        })
+      }
     } catch {
       // Preserve the original upload error when cleanup also fails.
     }
@@ -172,16 +249,29 @@ async function uploadMultipart(
 }
 
 async function completeDirectUpload(
-  path: string,
+  context: UploadContext,
   file: File,
   uploadID = "",
 ): Promise<void> {
-  await r.post("/fs/complete_direct_upload", {
-    path,
-    file_name: file.name,
-    file_size: file.size,
-    upload_id: uploadID,
-  })
+  const resp: any = context.collection
+    ? await r.post(
+        `/public/collection/${context.collection.id}/complete_direct_upload`,
+        {
+          password: password(),
+          file_name: context.fileName,
+          file_size: file.size,
+          upload_id: uploadID,
+          upload_token: context.collection.token,
+          upload_session: context.collection.session,
+        },
+      )
+    : await r.post("/fs/complete_direct_upload", {
+        path: context.path,
+        file_name: context.fileName,
+        file_size: file.size,
+        upload_id: uploadID,
+      })
+  if (resp.code !== 200) throw new Error(resp.message)
 }
 
 async function uploadPart(
