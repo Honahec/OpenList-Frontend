@@ -123,7 +123,7 @@ export const ListTitle = (props: {
 }
 
 const ListLayout = () => {
-  const { pathname } = useRouter()
+  const { pathname, isCollection } = useRouter()
 
   const [initialOrder, setInitialOrder] = createSignal<OrderBy>()
   const [initialReverse, setInitialReverse] = createSignal(false)
@@ -162,6 +162,7 @@ const ListLayout = () => {
     >
       <ListTitle
         sortCallback={sortObjs}
+        disableCheckbox={isCollection()}
         initialOrder={initialOrder()}
         initialReverse={initialReverse()}
       />

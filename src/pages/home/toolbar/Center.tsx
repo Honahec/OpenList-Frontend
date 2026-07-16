@@ -16,13 +16,14 @@ import { Motion, Presence } from "solid-motionone"
 import { useRouter } from "~/hooks"
 
 export const Center = () => {
+  const { isShare, isCollection } = useRouter()
   const show = createMemo(
     () =>
+      !isCollection() &&
       [State.Folder, State.FetchingMore].includes(objStore.state) &&
       checkboxOpen() &&
       haveSelected(),
   )
-  const { isShare } = useRouter()
   return (
     <Presence exitBeforeEnter>
       <Show when={show()}>

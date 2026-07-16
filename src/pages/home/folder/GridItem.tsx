@@ -24,9 +24,10 @@ export const GridItem = (props: { obj: StoreObj; index: number }) => {
     />
   )
   const { show } = useContextMenu({ id: 1 })
-  const { pushHref, to } = useRouter()
+  const { pushHref, to, isCollection } = useRouter()
   const { openWithDoubleClick, toggleWithClick, restoreSelectionCache } =
     useSelectWithMouse()
+  const canOpen = () => !isCollection() || props.obj.is_dir
   return (
     <Motion.div
       initial={{ opacity: 0, scale: 0.9 }}
@@ -50,18 +51,21 @@ export const GridItem = (props: { obj: StoreObj; index: number }) => {
           bgColor: hoverColor(),
         }}
         as={LinkWithPush}
-        href={props.obj.name}
+        href={canOpen() ? props.obj.name : "."}
         cursor={
-          openWithDoubleClick() || toggleWithClick() ? "default" : "pointer"
+          !canOpen() || openWithDoubleClick() || toggleWithClick()
+            ? "default"
+            : "pointer"
         }
         bgColor={props.obj.selected ? hoverColor() : undefined}
         on:dblclick={() => {
-          if (!openWithDoubleClick()) return
+          if (!canOpen() || !openWithDoubleClick()) return
           selectIndex(props.index, true, true)
           to(pushHref(props.obj.name))
         }}
         on:click={(e: MouseEvent) => {
           e.preventDefault()
+          if (!canOpen()) return
           if (openWithDoubleClick()) return
           if (e.ctrlKey || e.metaKey || e.shiftKey) return
           if (!restoreSelectionCache()) return
@@ -70,9 +74,14 @@ export const GridItem = (props: { obj: StoreObj; index: number }) => {
           to(pushHref(props.obj.name))
         }}
         onMouseEnter={() => {
+          if (!canOpen()) return
           setPathAs(props.obj.name, props.obj.is_dir, true)
         }}
         onContextMenu={(e: MouseEvent) => {
+          if (isCollection()) {
+            e.preventDefault()
+            return
+          }
           batch(() => {
             // if (!checkboxOpen()) {
             //   toggleCheckbox();
@@ -88,7 +97,7 @@ export const GridItem = (props: { obj: StoreObj; index: number }) => {
           w="$full"
           cursor={props.obj.type !== ObjType.IMAGE ? "inherit" : "pointer"}
           on:click={(e: MouseEvent) => {
-            if (props.obj.type !== ObjType.IMAGE) return
+            if (isCollection() || props.obj.type !== ObjType.IMAGE) return
             if (e.ctrlKey || e.metaKey || e.shiftKey) return
             if (!restoreSelectionCache()) return
             bus.emit("gallery", props.obj.name)
@@ -97,7 +106,7 @@ export const GridItem = (props: { obj: StoreObj; index: number }) => {
           }}
           pos="relative"
         >
-          <Show when={checkboxOpen()}>
+          <Show when={!isCollection() && checkboxOpen()}>
             <ItemCheckbox
               pos="absolute"
               left="$1"

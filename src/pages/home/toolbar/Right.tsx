@@ -187,11 +187,13 @@ export const Right = () => {
                 }}
               />
             </Show>
-            <RightIcon
-              tips="toggle_checkbox"
-              as={TbCheckbox}
-              onClick={toggleCheckbox}
-            />
+            <Show when={!isCollection()}>
+              <RightIcon
+                tips="toggle_checkbox"
+                as={TbCheckbox}
+                onClick={toggleCheckbox}
+              />
+            </Show>
             <RightIcon
               as={AiOutlineSetting}
               tips="local_settings"

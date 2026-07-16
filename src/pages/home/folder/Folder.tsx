@@ -5,12 +5,13 @@ import {
   onCleanup,
   Switch,
   Match,
+  Show,
   on,
 } from "solid-js"
 import { layout } from "~/store"
 import { ContextMenu } from "./context-menu"
 import { Pager } from "./Pager"
-import { useLink, useT } from "~/hooks"
+import { useLink, useRouter, useT } from "~/hooks"
 import { objStore, local } from "~/store"
 import { ObjType } from "~/types"
 import { bus } from "~/utils"
@@ -30,6 +31,7 @@ const ImageLayout = lazy(() => import("./Images"))
 
 const Folder = () => {
   const { rawLink } = useLink()
+  const { isCollection } = useRouter()
   const images = createMemo(() =>
     objStore.objs.filter((obj) => obj.type === ObjType.IMAGE),
   )
@@ -82,8 +84,10 @@ const Folder = () => {
         </Match>
       </Switch>
       <Pager />
-      <Search />
-      <ContextMenu />
+      <Show when={!isCollection()}>
+        <Search />
+        <ContextMenu />
+      </Show>
     </>
   )
 }
