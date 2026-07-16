@@ -3,10 +3,6 @@ import { FormUpload } from "./form"
 import { StreamUpload } from "./stream"
 import { HttpDirectUpload } from "./direct"
 import { Upload } from "./types"
-import { trimBase } from "~/utils"
-
-const isCollection = () =>
-  trimBase(decodeURIComponent(location.pathname)).startsWith("/@c/")
 
 type Uploader = {
   upload: Upload
@@ -26,15 +22,19 @@ const AllUploads: Uploader[] = [
   {
     name: "Stream",
     upload: StreamUpload,
-    available: () => !isCollection(),
+    available: () => true,
   },
   {
     name: "Form",
     upload: FormUpload,
-    available: () => !isCollection(),
+    available: () => true,
   },
 ]
 
-export const getUploads = (): Pick<Uploader, "name" | "upload">[] => {
-  return AllUploads.filter((u) => u.available())
+export const getUploads = (
+  collection = false,
+): Pick<Uploader, "name" | "upload">[] => {
+  return AllUploads.filter(
+    (u) => u.available() && (!collection || u.name === "HTTP Direct"),
+  )
 }

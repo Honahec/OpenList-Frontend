@@ -13,7 +13,7 @@ import {
   Box,
   Stack,
 } from "@hope-ui/solid"
-import { createSignal, For, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 import { usePath, useRouter, useT } from "~/hooks"
 import { getMainColor, uploadConfig, setUploadConfig } from "~/store"
 import {
@@ -110,8 +110,14 @@ const Upload = () => {
   }
 
   // All upload methods are available by default
-  const uploaders = getUploads()
-  const [curUploader, setCurUploader] = createSignal(uploaders[0])
+  const uploaders = createMemo(() => getUploads(isCollection()))
+  const [curUploader, setCurUploader] = createSignal(uploaders()[0])
+  createEffect(() => {
+    const available = uploaders()
+    if (!available.some((uploader) => uploader.name === curUploader()?.name)) {
+      setCurUploader(available[0])
+    }
+  })
   const handleFile = async (file: File) => {
     const path = file.webkitRelativePath ? file.webkitRelativePath : file.name
     setUpload(path, "status", "uploading")
@@ -255,10 +261,10 @@ const Upload = () => {
                 value={curUploader()?.name}
                 onChange={(name) => {
                   setCurUploader(
-                    uploaders.find((uploader) => uploader.name === name)!,
+                    uploaders().find((uploader) => uploader.name === name)!,
                   )
                 }}
-                options={uploaders.map((uploader) => {
+                options={uploaders().map((uploader) => {
                   return {
                     label: uploader.name,
                     value: uploader.name,
