@@ -52,6 +52,16 @@ const AddOrEdit = () => {
           valid
           onChange={(v) => setShare("collect", v)}
         />
+        <Show when={share.collect}>
+          <Item
+            name="collection_fields"
+            type={Type.Text}
+            value={share.collection_fields ?? ""}
+            valid
+            placeholder={t("shares.collection_fields_placeholder")}
+            onChange={(value) => setShare("collection_fields", value)}
+          />
+        </Show>
         <Item
           name="id"
           type={Type.String}

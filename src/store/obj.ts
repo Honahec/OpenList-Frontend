@@ -2,7 +2,7 @@ import naturalSort from "typescript-natural-sort"
 import { cookieStorage, createStorageSignal } from "@solid-primitives/storage"
 import { createMemo, createSignal } from "solid-js"
 import { createStore, produce } from "solid-js/store"
-import { Obj, ObjType, StoreObj } from "~/types"
+import { CollectionForm, Obj, ObjType, StoreObj } from "~/types"
 import { bus, log } from "~/utils"
 import { keyPressed } from "./key-event"
 import { local } from "./local_settings"
@@ -29,6 +29,7 @@ const initialObjStore = {
   header: "",
   provider: "",
   direct_upload_tools: <string[] | undefined>undefined,
+  collection_form: <CollectionForm | undefined>undefined,
   state: State.Initial,
   err: "",
 }
@@ -82,6 +83,8 @@ export const ObjStore = {
   setState: (state: State) => setObjStore("state", state),
   setDirectUploadTools: (tools?: string[]) =>
     setObjStore("direct_upload_tools", tools),
+  setCollectionForm: (form?: CollectionForm) =>
+    setObjStore("collection_form", form),
   setErr: (err: string) => setObjStore("err", err),
 }
 

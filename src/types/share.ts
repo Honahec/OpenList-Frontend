@@ -14,6 +14,7 @@ export interface Share {
   readme: string
   header: string
   collect: boolean
+  collection_fields: string
 }
 
 export interface ShareUpdate extends Share {

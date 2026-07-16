@@ -39,6 +39,8 @@
   "input_password": "Please enter Share Code",
   "copy_msg": "Copy link",
   "collect": "File collection mode",
+  "collection_fields": "Collection fields",
+  "collection_fields_placeholder": "One field per line. Prefix required fields with *, for example:\n* Name\n* Student ID\nNotes",
   "copy_collection_link": "Copy collection link",
   "collection": {
     "title": "File collection",
@@ -48,6 +50,11 @@
     "description": "Upload files here. Other visitors cannot view files that have already been collected.",
     "remaining": "Remaining uploads: {{count}}",
     "start": "Start upload",
+    "submission": {
+      "title": "Submission information",
+      "description": "Complete the fields below before uploading. You can return and update them at any time.",
+      "optional": "optional"
+    },
     "status": {
       "pending": "Pending",
       "uploading": "Uploading",

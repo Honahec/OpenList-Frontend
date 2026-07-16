@@ -39,6 +39,8 @@
   "input_password": "请输入分享码",
   "copy_msg": "复制链接",
   "collect": "文件收集模式",
+  "collection_fields": "收集字段",
+  "collection_fields_placeholder": "每行一个字段；必填字段以 * 开头，例如：\n* 姓名\n* 学号\n备注",
   "copy_collection_link": "复制收集链接",
   "collection": {
     "title": "文件收集",
@@ -48,6 +50,11 @@
     "description": "请将文件上传到此处，其他访客无法查看已经收集的文件。",
     "remaining": "剩余可上传次数：{{count}}",
     "start": "开始上传",
+    "submission": {
+      "title": "提交信息",
+      "description": "请先填写以下信息再上传文件；之后可以随时返回修改。",
+      "optional": "选填"
+    },
     "status": {
       "pending": "等待上传",
       "uploading": "上传中",

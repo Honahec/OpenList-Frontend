@@ -20,7 +20,19 @@ export type FsListResp = Resp<{
   write_content_bypass: boolean
   provider: string
   direct_upload_tools?: string[]
+  collection_form?: CollectionForm
 }>
+
+export type CollectionField = {
+  name: string
+  required: boolean
+}
+
+export type CollectionForm = {
+  fields: CollectionField[]
+  values: Record<string, string>
+  submitted: boolean
+}
 
 export type SearchNode = {
   parent: string

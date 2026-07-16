@@ -7,14 +7,23 @@ import {
   Match,
   Show,
   on,
+  For,
+  createSignal,
 } from "solid-js"
-import { layout } from "~/store"
+import {
+  Button,
+  FormControl,
+  FormLabel,
+  Input,
+  Text,
+  VStack,
+} from "@hope-ui/solid"
+import { layout, local, objStore, password } from "~/store"
 import { ContextMenu } from "./context-menu"
 import { Pager } from "./Pager"
-import { useLink, useRouter, useT } from "~/hooks"
-import { objStore, local } from "~/store"
+import { useLink, usePath, useRouter, useT } from "~/hooks"
 import { ObjType } from "~/types"
-import { bus } from "~/utils"
+import { bus, handleResp, notify, r } from "~/utils"
 import lightGallery from "lightgallery"
 import lgThumbnail from "lightgallery/plugins/thumbnail"
 import lgZoom from "lightgallery/plugins/zoom"
@@ -30,8 +39,44 @@ const GridLayout = lazy(() => import("./Grid"))
 const ImageLayout = lazy(() => import("./Images"))
 
 const Folder = () => {
+  const t = useT()
   const { rawLink } = useLink()
-  const { isCollection } = useRouter()
+  const { isCollection, pathname } = useRouter()
+  const { refresh } = usePath()
+  const [submissionValues, setSubmissionValues] = createSignal<
+    Record<string, string>
+  >({})
+  const [savingSubmission, setSavingSubmission] = createSignal(false)
+  const collectionRoot = createMemo(() => /^\/@c\/[^/]+\/?$/.test(pathname()))
+  const collectionID = createMemo(() => pathname().split("/")[2] ?? "")
+  const collectionForm = createMemo(() => objStore.collection_form)
+  createEffect(() => {
+    const form = collectionForm()
+    setSubmissionValues(form ? { ...form.values } : {})
+  })
+  const submissionValid = createMemo(() =>
+    (collectionForm()?.fields ?? []).every(
+      (field) => !field.required || !!submissionValues()[field.name]?.trim(),
+    ),
+  )
+  const saveSubmission = async () => {
+    setSavingSubmission(true)
+    try {
+      const resp: any = await r.post(
+        `/public/collection/${encodeURIComponent(collectionID())}/submission`,
+        {
+          password: password(),
+          values: submissionValues(),
+        },
+      )
+      handleResp(resp, async () => {
+        notify.success(t("global.save_success"))
+        await refresh()
+      })
+    } finally {
+      setSavingSubmission(false)
+    }
+  }
   const images = createMemo(() =>
     objStore.objs.filter((obj) => obj.type === ObjType.IMAGE),
   )
@@ -69,9 +114,47 @@ const Folder = () => {
     bus.off("gallery")
     dynamicGallery?.destroy()
   })
-  const t = useT()
   return (
     <>
+      <Show when={isCollection() && collectionRoot() && collectionForm()}>
+        <VStack w="$full" alignItems="stretch" spacing="$2" p="$2">
+          <Text fontWeight="bold">
+            {t("shares.collection.submission.title")}
+          </Text>
+          <Text color="$neutral11">
+            {t("shares.collection.submission.description")}
+          </Text>
+          <For each={collectionForm()!.fields}>
+            {(field, index) => (
+              <FormControl required={field.required}>
+                <FormLabel for={`collection-field-${index()}`}>
+                  {field.required
+                    ? field.name
+                    : `${field.name} (${t("shares.collection.submission.optional")})`}
+                </FormLabel>
+                <Input
+                  id={`collection-field-${index()}`}
+                  value={submissionValues()[field.name] ?? ""}
+                  onInput={(event) =>
+                    setSubmissionValues({
+                      ...submissionValues(),
+                      [field.name]: event.currentTarget.value,
+                    })
+                  }
+                />
+              </FormControl>
+            )}
+          </For>
+          <Button
+            alignSelf="start"
+            loading={savingSubmission()}
+            disabled={!submissionValid()}
+            onClick={saveSubmission}
+          >
+            {t("global.save")}
+          </Button>
+        </VStack>
+      </Show>
       <Switch>
         <Match when={layout() === "list"}>
           <ListLayout />
