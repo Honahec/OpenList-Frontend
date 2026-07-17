@@ -180,11 +180,17 @@ extract_i18n_tarball() {
     else
         log_info "Downloading i18n.tar.gz from GitHub..."
         if curl -L -o "i18n.tar.gz" "$i18n_file_url"; then
-            if tar -xzvf i18n.tar.gz -C src/lang; then
+            i18n_tmp=$(mktemp -d)
+            if tar -xzvf i18n.tar.gz -C "$i18n_tmp"; then
+                # Keep source languages from this checkout so fork-specific
+                # translations are not overwritten by an older release.
+                rm -rf "$i18n_tmp/en" "$i18n_tmp/zh-CN"
+                cp -a "$i18n_tmp/." src/lang/
                 log_info "i18n files extracted to src/lang/"
             else
                 log_warning "Failed to extract i18n.tar.gz"
             fi
+            rm -rf "$i18n_tmp"
         else
             log_warning "Failed to download i18n.tar.gz"
         fi
