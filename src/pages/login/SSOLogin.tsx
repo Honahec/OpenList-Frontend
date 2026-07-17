@@ -30,7 +30,7 @@ const SSOLogin = () => {
   })
   if (ssoSignEnabled) {
     const login = () => {
-      const url = r.getUri() + "/auth/sso?method=sso_get_token"
+      const url = r.getUri() + "/auth/sso?method=sso_get_token&_=" + Date.now()
       if (useCompatibility) {
         window.location.href = url
         return
