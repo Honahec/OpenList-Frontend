@@ -53,7 +53,8 @@
     "submission": {
       "title": "提交信息",
       "description": "请先填写以下信息再上传文件；之后可以随时返回修改。",
-      "optional": "选填"
+      "optional": "选填",
+      "completed": "信息已填写"
     },
     "status": {
       "pending": "等待上传",

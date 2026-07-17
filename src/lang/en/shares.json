@@ -53,7 +53,8 @@
     "submission": {
       "title": "Submission information",
       "description": "Complete the fields below before uploading. You can return and update them at any time.",
-      "optional": "optional"
+      "optional": "optional",
+      "completed": "Information completed"
     },
     "status": {
       "pending": "Pending",

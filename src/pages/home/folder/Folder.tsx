@@ -14,6 +14,7 @@ import {
   Button,
   FormControl,
   FormLabel,
+  HStack,
   Input,
   Text,
   VStack,
@@ -46,14 +47,17 @@ const Folder = () => {
   const [submissionValues, setSubmissionValues] = createSignal<
     Record<string, string>
   >({})
+  const [submissionOpen, setSubmissionOpen] = createSignal(true)
   const [savingSubmission, setSavingSubmission] = createSignal(false)
   const collectionRoot = createMemo(() => /^\/@c\/[^/]+\/?$/.test(pathname()))
   const collectionID = createMemo(() => pathname().split("/")[2] ?? "")
   const collectionForm = createMemo(() => objStore.collection_form)
-  createEffect(() => {
-    const form = collectionForm()
-    setSubmissionValues(form ? { ...form.values } : {})
-  })
+  createEffect(
+    on(collectionForm, (form) => {
+      setSubmissionValues(form ? { ...form.values } : {})
+      setSubmissionOpen(!form?.submitted)
+    }),
+  )
   const submissionValid = createMemo(() =>
     (collectionForm()?.fields ?? []).every(
       (field) => !field.required || !!submissionValues()[field.name]?.trim(),
@@ -72,6 +76,7 @@ const Folder = () => {
       handleResp(resp, async () => {
         notify.success(t("global.save_success"))
         await refresh()
+        setSubmissionOpen(false)
       })
     } finally {
       setSavingSubmission(false)
@@ -117,43 +122,61 @@ const Folder = () => {
   return (
     <>
       <Show when={isCollection() && collectionRoot() && collectionForm()}>
-        <VStack w="$full" alignItems="stretch" spacing="$2" p="$2">
-          <Text fontWeight="bold">
-            {t("shares.collection.submission.title")}
-          </Text>
-          <Text color="$neutral11">
-            {t("shares.collection.submission.description")}
-          </Text>
-          <For each={collectionForm()!.fields}>
-            {(field, index) => (
-              <FormControl required={field.required}>
-                <FormLabel for={`collection-field-${index()}`}>
-                  {field.required
-                    ? field.name
-                    : `${field.name} (${t("shares.collection.submission.optional")})`}
-                </FormLabel>
-                <Input
-                  id={`collection-field-${index()}`}
-                  value={submissionValues()[field.name] ?? ""}
-                  onInput={(event) =>
-                    setSubmissionValues({
-                      ...submissionValues(),
-                      [field.name]: event.currentTarget.value,
-                    })
-                  }
-                />
-              </FormControl>
-            )}
-          </For>
-          <Button
-            alignSelf="start"
-            loading={savingSubmission()}
-            disabled={!submissionValid()}
-            onClick={saveSubmission}
-          >
-            {t("global.save")}
-          </Button>
-        </VStack>
+        <Show
+          when={submissionOpen()}
+          fallback={
+            <HStack w="$full" justifyContent="space-between" p="$2">
+              <Text fontWeight="bold">
+                {t("shares.collection.submission.completed")}
+              </Text>
+              <Button
+                size="sm"
+                colorScheme="neutral"
+                onClick={() => setSubmissionOpen(true)}
+              >
+                {t("global.edit")}
+              </Button>
+            </HStack>
+          }
+        >
+          <VStack w="$full" alignItems="stretch" spacing="$2" p="$2">
+            <Text fontWeight="bold">
+              {t("shares.collection.submission.title")}
+            </Text>
+            <Text color="$neutral11">
+              {t("shares.collection.submission.description")}
+            </Text>
+            <For each={collectionForm()!.fields}>
+              {(field, index) => (
+                <FormControl required={field.required}>
+                  <FormLabel for={`collection-field-${index()}`}>
+                    {field.required
+                      ? field.name
+                      : `${field.name} (${t("shares.collection.submission.optional")})`}
+                  </FormLabel>
+                  <Input
+                    id={`collection-field-${index()}`}
+                    value={submissionValues()[field.name] ?? ""}
+                    onInput={(event) =>
+                      setSubmissionValues({
+                        ...submissionValues(),
+                        [field.name]: event.currentTarget.value,
+                      })
+                    }
+                  />
+                </FormControl>
+              )}
+            </For>
+            <Button
+              alignSelf="start"
+              loading={savingSubmission()}
+              disabled={!submissionValid()}
+              onClick={saveSubmission}
+            >
+              {t("global.save")}
+            </Button>
+          </VStack>
+        </Show>
       </Show>
       <Switch>
         <Match when={layout() === "list"}>
