@@ -1,6 +1,8 @@
 import { UploadFileProps } from "./types"
 import type { WorkerMessage } from "./hash-worker"
 import HashWorker from "./hash-worker?worker&inline"
+import type { PartHashWorkerMessage } from "./part-hash-worker"
+import PartHashWorker from "./part-hash-worker?worker&inline"
 
 export const traverseFileTree = async (entry: FileSystemEntry) => {
   const res: File[] = []
@@ -98,4 +100,34 @@ export const calculateHash = async (
       worker.onerror = (e) => terminate(() => reject(e))
     },
   )
+}
+
+export const calculatePartHashes = async (
+  file: File,
+  chunkSize: number,
+  onProgress?: (progress: number) => void,
+) => {
+  return new Promise<string[]>((resolve, reject) => {
+    const worker = new PartHashWorker()
+    const terminate = (fn: () => void) => {
+      worker.terminate()
+      fn()
+    }
+    worker.postMessage({ file, chunkSize })
+    worker.onmessage = (e: MessageEvent<PartHashWorkerMessage>) => {
+      const data = e.data
+      switch (data.type) {
+        case "progress":
+          onProgress?.(data.progress)
+          break
+        case "result":
+          terminate(() => resolve(data.hashes))
+          break
+        case "error":
+          terminate(() => reject(new Error(data.error)))
+          break
+      }
+    }
+    worker.onerror = (e) => terminate(() => reject(e))
+  })
 }

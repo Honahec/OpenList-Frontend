@@ -1,6 +1,7 @@
 import { Upload, SetUpload } from "./types"
 import { r, pathDir } from "~/utils"
 import { password } from "~/store"
+import { calculatePartHashes } from "./util"
 
 type DirectUploadInfo = {
   upload_url?: string
@@ -8,8 +9,14 @@ type DirectUploadInfo = {
   headers?: Record<string, string>
   method?: string
   finalize?: boolean
+  completed?: boolean
+  hashing?: {
+    algorithm: string
+    chunk_size: number
+  }
   multipart?: {
     upload_id: string
+    parts?: number[]
   }
 }
 
@@ -17,6 +24,7 @@ type DirectUploadPartInfo = {
   upload_url: string
   headers?: Record<string, string>
   method?: string
+  body_mode?: string
 }
 
 type UploadContext = {
@@ -63,59 +71,88 @@ export const HttpDirectUpload: Upload = async (
 ) => {
   const path = pathDir(uploadPath)
   const collection = collectionUpload(uploadPath)
-
-  // Get direct upload info from backend
-  const resp: any = collection
-    ? await r.post(
-        `/public/collection/${collection.id}/get_direct_upload_info`,
-        {
-          password: password(),
-          file_name: collection.fileName,
-          file_size: file.size,
-        },
-      )
-    : await r.post(
-        "/fs/get_direct_upload_info",
-        {
-          path,
-          file_name: file.name,
-          file_size: file.size,
-          tool: "HttpDirect",
-        },
-        {
-          headers: {
-            Overwrite: overwrite,
-          },
-        },
-      )
-
-  if (resp.code !== 200) {
-    throw new Error(resp.message)
-  }
-
-  let uploadInfo: DirectUploadInfo
   const context: UploadContext = { path, fileName: file.name }
-  if (collection) {
-    const data = resp.data as {
-      file_name: string
-      upload_token: string
-      upload_session: string
-      upload_info: DirectUploadInfo
+
+  const getUploadInfo = async (partHashes?: string[]) => {
+    const resp: any = collection
+      ? await r.post(
+          `/public/collection/${collection.id}/get_direct_upload_info`,
+          {
+            password: password(),
+            file_name: collection.fileName,
+            file_size: file.size,
+            part_hashes: partHashes,
+          },
+        )
+      : await r.post(
+          "/fs/get_direct_upload_info",
+          {
+            path,
+            file_name: file.name,
+            file_size: file.size,
+            tool: "HttpDirect",
+            part_hashes: partHashes,
+          },
+          {
+            headers: {
+              Overwrite: overwrite,
+            },
+          },
+        )
+
+    if (resp.code !== 200) {
+      throw new Error(resp.message)
     }
-    uploadInfo = data.upload_info
-    context.fileName = data.file_name
-    context.collection = {
-      id: collection.id,
-      token: data.upload_token,
-      session: data.upload_session,
+
+    if (collection) {
+      const data = resp.data as {
+        file_name: string
+        upload_token?: string
+        upload_session?: string
+        upload_info: DirectUploadInfo
+      }
+      context.fileName = data.file_name
+      if (data.upload_token && data.upload_session) {
+        context.collection = {
+          id: collection.id,
+          token: data.upload_token,
+          session: data.upload_session,
+        }
+      }
+      return data.upload_info
     }
-  } else {
-    uploadInfo = resp.data as DirectUploadInfo
+    return resp.data as DirectUploadInfo
   }
+
+  let uploadInfo = await getUploadInfo()
 
   // If upload_info is null, direct upload is not supported - fallback to Stream
   if (!uploadInfo) {
     throw new Error("Http Direct Upload not supported")
+  }
+
+  if (uploadInfo.hashing) {
+    if (uploadInfo.hashing.algorithm !== "md5") {
+      throw new Error(
+        `Unsupported direct upload hash: ${uploadInfo.hashing.algorithm}`,
+      )
+    }
+    setUpload("status", "hashing")
+    const hashes = await calculatePartHashes(
+      file,
+      uploadInfo.hashing.chunk_size,
+      (progress) => setUpload("progress", progress),
+    )
+    uploadInfo = await getUploadInfo(hashes)
+    if (!uploadInfo || uploadInfo.hashing) {
+      throw new Error("Direct upload initialization did not complete")
+    }
+    setUpload("status", "uploading")
+  }
+
+  if (uploadInfo.completed) {
+    await completeDirectUpload(context, file)
+    return undefined
   }
 
   // Upload file directly to storage
@@ -129,6 +166,7 @@ export const HttpDirectUpload: Upload = async (
       file,
       chunkSize,
       uploadInfo.multipart.upload_id,
+      uploadInfo.multipart.parts,
       setUpload,
     )
   }
@@ -165,6 +203,7 @@ async function uploadMultipart(
   file: File,
   chunkSize: number,
   uploadID: string,
+  requiredParts?: number[],
   setUpload?: SetUpload,
 ): Promise<undefined> {
   if (chunkSize <= 0 || !uploadID) {
@@ -172,11 +211,25 @@ async function uploadMultipart(
   }
 
   const totalParts = Math.ceil(file.size / chunkSize)
+  const parts =
+    requiredParts ?? Array.from({ length: totalParts }, (_, i) => i + 1)
   const calcSpeed = createSpeedCalculator()
+  const required = new Set(parts)
   let uploadedBytes = 0
+  for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
+    if (!required.has(partNumber)) {
+      const start = (partNumber - 1) * chunkSize
+      uploadedBytes += Math.min(chunkSize, file.size - start)
+    }
+  }
+  setUpload?.("progress", (uploadedBytes / file.size) * 100)
 
   try {
-    for (let i = 0; i < totalParts; i++) {
+    for (const partNumber of parts) {
+      const i = partNumber - 1
+      if (i < 0 || i >= totalParts) {
+        throw new Error(`Invalid direct upload part ${partNumber}`)
+      }
       const start = i * chunkSize
       const end = Math.min(start + chunkSize, file.size)
       const part = file.slice(start, end)
@@ -190,7 +243,7 @@ async function uploadMultipart(
               upload_id: uploadID,
               upload_token: context.collection.token,
               upload_session: context.collection.session,
-              part_number: i + 1,
+              part_number: partNumber,
             },
           )
         : await r.post("/fs/get_direct_upload_part_info", {
@@ -198,7 +251,7 @@ async function uploadMultipart(
             file_name: context.fileName,
             file_size: file.size,
             upload_id: uploadID,
-            part_number: i + 1,
+            part_number: partNumber,
           })
       if (resp.code !== 200) throw new Error(resp.message)
       const partInfo = resp.data as DirectUploadPartInfo
@@ -210,6 +263,8 @@ async function uploadMultipart(
         partInfo.upload_url,
         partInfo.method || "PUT",
         partInfo.headers,
+        partInfo.body_mode,
+        context.fileName,
         uploadedBytes,
         file.size,
         calcSpeed,
@@ -279,6 +334,8 @@ async function uploadPart(
   uploadURL: string,
   method: string,
   headers: Record<string, string> | undefined,
+  bodyMode: string | undefined,
+  fileName: string,
   uploadedBytes: number,
   totalBytes: number,
   calcSpeed: ReturnType<typeof createSpeedCalculator>,
@@ -307,7 +364,13 @@ async function uploadPart(
         xhr.setRequestHeader(key, value)
       })
     }
-    xhr.send(part)
+    if (bodyMode === "multipart") {
+      const form = new FormData()
+      form.append("file", part, fileName)
+      xhr.send(form)
+    } else {
+      xhr.send(part)
+    }
   })
 }
 
