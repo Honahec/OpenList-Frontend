@@ -178,6 +178,7 @@
     "hashing": "Hashing",
     "pending": "Pending",
     "uploading": "Uploading",
+    "confirming": "Waiting for storage",
     "backending": "Uploading in the backend",
     "success": "Success",
     "error": "Error",

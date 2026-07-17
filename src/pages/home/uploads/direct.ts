@@ -37,6 +37,70 @@ type UploadContext = {
   }
 }
 
+const MEBIBYTE = 1024 * 1024
+const DIRECT_UPLOAD_TIMEOUT_MS = 180_000
+const DIRECT_UPLOAD_MAX_ATTEMPTS = 3
+const directUploadSemaphore = new DirectUploadSemaphore(3)
+
+class DirectUploadSemaphore {
+  private active = 0
+  private readonly queue: Array<{
+    resolve: (release: () => void) => void
+    reject: (error: DirectUploadPartError) => void
+    signal: AbortSignal
+    abort: () => void
+  }> = []
+
+  constructor(private readonly limit: number) {}
+
+  async run<T>(task: () => Promise<T>, signal: AbortSignal): Promise<T> {
+    const release = await this.acquire(signal)
+    try {
+      return await task()
+    } finally {
+      release()
+    }
+  }
+
+  private acquire(signal: AbortSignal) {
+    return new Promise<() => void>((resolve, reject) => {
+      if (signal.aborted) {
+        reject(new DirectUploadPartError("Upload canceled", 0, true))
+        return
+      }
+      if (this.active < this.limit) {
+        this.active++
+        resolve(() => this.release())
+        return
+      }
+      const entry = {
+        resolve,
+        reject,
+        signal,
+        abort: () => {
+          const index = this.queue.indexOf(entry)
+          if (index >= 0) this.queue.splice(index, 1)
+          reject(new DirectUploadPartError("Upload canceled", 0, true))
+        },
+      }
+      this.queue.push(entry)
+      signal.addEventListener("abort", entry.abort, { once: true })
+    })
+  }
+
+  private release() {
+    this.active--
+    while (this.queue.length > 0) {
+      const entry = this.queue.shift()!
+      entry.signal.removeEventListener("abort", entry.abort)
+      if (entry.signal.aborted) continue
+      this.active++
+      entry.resolve(() => this.release())
+      return
+    }
+  }
+}
+
 const collectionUpload = (uploadPath: string) => {
   const match = uploadPath.match(/^\/@c\/([^/]+)\/(.+)$/)
   if (!match) return
@@ -215,67 +279,111 @@ async function uploadMultipart(
     requiredParts ?? Array.from({ length: totalParts }, (_, i) => i + 1)
   const calcSpeed = createSpeedCalculator()
   const required = new Set(parts)
-  let uploadedBytes = 0
+  let completedBytes = 0
   for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
     if (!required.has(partNumber)) {
       const start = (partNumber - 1) * chunkSize
-      uploadedBytes += Math.min(chunkSize, file.size - start)
+      completedBytes += Math.min(chunkSize, file.size - start)
     }
   }
-  setUpload?.("progress", (uploadedBytes / file.size) * 100)
+  const loadedByPart = new Map<number, number>()
+  const sendingParts = new Set<number>()
+  const waitingParts = new Set<number>()
+  const controller = new AbortController()
+
+  const updateStatus = () => {
+    const waitingForStorage = sendingParts.size === 0 && waitingParts.size > 0
+    setUpload?.("status", waitingForStorage ? "confirming" : "uploading")
+    if (waitingForStorage) setUpload?.("speed", 0)
+  }
+  const updateProgress = (partNumber: number, loaded: number) => {
+    const previous = loadedByPart.get(partNumber) ?? 0
+    loadedByPart.set(partNumber, Math.max(previous, loaded))
+    const totalLoaded =
+      completedBytes +
+      Array.from(loadedByPart.values()).reduce((sum, value) => sum + value, 0)
+    setUpload?.("progress", (totalLoaded / file.size) * 100)
+    calcSpeed(totalLoaded, setUpload)
+  }
+  setUpload?.("progress", (completedBytes / file.size) * 100)
+
+  const concurrency = getDirectUploadConcurrency(file.size, parts.length)
+  let nextPartIndex = 0
+  let uploadWorkers: Promise<void>[] = []
 
   try {
-    for (const partNumber of parts) {
-      const i = partNumber - 1
-      if (i < 0 || i >= totalParts) {
-        throw new Error(`Invalid direct upload part ${partNumber}`)
+    const uploadNext = async () => {
+      while (!controller.signal.aborted) {
+        const partIndex = nextPartIndex++
+        if (partIndex >= parts.length) return
+        const partNumber = parts[partIndex]
+        const i = partNumber - 1
+        if (i < 0 || i >= totalParts) {
+          throw new Error(`Invalid direct upload part ${partNumber}`)
+        }
+        const start = i * chunkSize
+        const end = Math.min(start + chunkSize, file.size)
+        const part = file.slice(start, end)
+        await uploadPartWithRetry(
+          async () => {
+            const resp: any = context.collection
+              ? await r.post(
+                  `/public/collection/${context.collection.id}/get_direct_upload_part_info`,
+                  {
+                    password: password(),
+                    file_name: context.fileName,
+                    file_size: file.size,
+                    upload_id: uploadID,
+                    upload_token: context.collection.token,
+                    upload_session: context.collection.session,
+                    part_number: partNumber,
+                  },
+                )
+              : await r.post("/fs/get_direct_upload_part_info", {
+                  path: context.path,
+                  file_name: context.fileName,
+                  file_size: file.size,
+                  upload_id: uploadID,
+                  part_number: partNumber,
+                })
+            if (resp.code !== 200) throw new Error(resp.message)
+            const partInfo = resp.data as DirectUploadPartInfo
+            if (!partInfo?.upload_url) {
+              throw new Error(`Upload URL for part ${partNumber} is missing`)
+            }
+            return partInfo
+          },
+          part,
+          context.fileName,
+          controller.signal,
+          (loaded) => updateProgress(partNumber, loaded),
+          () => {
+            waitingParts.delete(partNumber)
+            sendingParts.add(partNumber)
+            updateStatus()
+          },
+          () => {
+            sendingParts.delete(partNumber)
+            waitingParts.add(partNumber)
+            updateStatus()
+          },
+        )
+        sendingParts.delete(partNumber)
+        waitingParts.delete(partNumber)
+        updateProgress(partNumber, part.size)
+        updateStatus()
       }
-      const start = i * chunkSize
-      const end = Math.min(start + chunkSize, file.size)
-      const part = file.slice(start, end)
-      const resp: any = context.collection
-        ? await r.post(
-            `/public/collection/${context.collection.id}/get_direct_upload_part_info`,
-            {
-              password: password(),
-              file_name: context.fileName,
-              file_size: file.size,
-              upload_id: uploadID,
-              upload_token: context.collection.token,
-              upload_session: context.collection.session,
-              part_number: partNumber,
-            },
-          )
-        : await r.post("/fs/get_direct_upload_part_info", {
-            path: context.path,
-            file_name: context.fileName,
-            file_size: file.size,
-            upload_id: uploadID,
-            part_number: partNumber,
-          })
-      if (resp.code !== 200) throw new Error(resp.message)
-      const partInfo = resp.data as DirectUploadPartInfo
-      if (!partInfo?.upload_url) {
-        throw new Error(`Upload URL for part ${i + 1} is missing`)
-      }
-      await uploadPart(
-        part,
-        partInfo.upload_url,
-        partInfo.method || "PUT",
-        partInfo.headers,
-        partInfo.body_mode,
-        context.fileName,
-        uploadedBytes,
-        file.size,
-        calcSpeed,
-        setUpload,
-      )
-      uploadedBytes += part.size
     }
 
+    uploadWorkers = Array.from({ length: concurrency }, uploadNext)
+    await Promise.all(uploadWorkers)
+
+    setUpload?.("status", "confirming")
     await completeDirectUpload(context, file, uploadID)
     return undefined
   } catch (error) {
+    controller.abort()
+    await Promise.allSettled(uploadWorkers)
     try {
       if (context.collection) {
         await r.post(
@@ -301,6 +409,95 @@ async function uploadMultipart(
     }
     throw error
   }
+}
+
+function getDirectUploadConcurrency(fileSize: number, requiredParts: number) {
+  if (fileSize <= 64 * MEBIBYTE) return 1
+  if (fileSize <= 256 * MEBIBYTE) return Math.min(2, requiredParts)
+  return Math.min(3, requiredParts)
+}
+
+class DirectUploadPartError extends Error {
+  constructor(
+    message: string,
+    readonly status = 0,
+    readonly canceled = false,
+  ) {
+    super(message)
+  }
+}
+
+async function uploadPartWithRetry(
+  getPartInfo: () => Promise<DirectUploadPartInfo>,
+  part: Blob,
+  fileName: string,
+  signal: AbortSignal,
+  onProgress: (loaded: number) => void,
+  onSending: () => void,
+  onWaiting: () => void,
+) {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= DIRECT_UPLOAD_MAX_ATTEMPTS; attempt++) {
+    if (signal.aborted) {
+      throw new DirectUploadPartError("Upload canceled", 0, true)
+    }
+    try {
+      const partInfo = await getPartInfo()
+      await directUploadSemaphore.run(
+        () =>
+          uploadPart(
+            part,
+            partInfo.upload_url,
+            partInfo.method || "PUT",
+            partInfo.headers,
+            partInfo.body_mode,
+            fileName,
+            signal,
+            onProgress,
+            onSending,
+            onWaiting,
+          ),
+        signal,
+      )
+      return
+    } catch (error) {
+      lastError = error
+      if (
+        attempt === DIRECT_UPLOAD_MAX_ATTEMPTS ||
+        !shouldRetryDirectUpload(error)
+      ) {
+        throw error
+      }
+      await abortableDelay(1000 * 2 ** (attempt - 1), signal)
+    }
+  }
+  throw lastError
+}
+
+function shouldRetryDirectUpload(error: unknown) {
+  if (!(error instanceof DirectUploadPartError) || error.canceled) return false
+  return (
+    error.status === 0 ||
+    error.status === 403 ||
+    error.status === 408 ||
+    error.status === 425 ||
+    error.status === 429 ||
+    error.status >= 500
+  )
+}
+
+function abortableDelay(duration: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const abort = () => {
+      window.clearTimeout(timer)
+      reject(new DirectUploadPartError("Upload canceled", 0, true))
+    }
+    const timer = window.setTimeout(() => {
+      signal.removeEventListener("abort", abort)
+      resolve()
+    }, duration)
+    signal.addEventListener("abort", abort, { once: true })
+  })
 }
 
 async function completeDirectUpload(
@@ -336,34 +533,65 @@ async function uploadPart(
   headers: Record<string, string> | undefined,
   bodyMode: string | undefined,
   fileName: string,
-  uploadedBytes: number,
-  totalBytes: number,
-  calcSpeed: ReturnType<typeof createSpeedCalculator>,
-  setUpload?: SetUpload,
+  signal: AbortSignal,
+  onProgress: (loaded: number) => void,
+  onSending: () => void,
+  onWaiting: () => void,
 ): Promise<void> {
+  if (signal.aborted) {
+    throw new DirectUploadPartError("Upload canceled", 0, true)
+  }
   const xhr = new XMLHttpRequest()
   await new Promise<void>((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener("abort", abort)
+    const abort = () => xhr.abort()
     xhr.upload.addEventListener("progress", (e) => {
-      if (e.lengthComputable && setUpload) {
-        const totalLoaded = uploadedBytes + e.loaded
-        setUpload("progress", (totalLoaded / totalBytes) * 100)
-        calcSpeed(totalLoaded, setUpload)
-      }
+      if (e.lengthComputable) onProgress(e.loaded)
     })
+    xhr.upload.addEventListener("load", onWaiting)
     xhr.addEventListener("load", () => {
+      cleanup()
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve()
       } else {
-        reject(new Error(directUploadError(xhr, "Upload part failed")))
+        reject(
+          new DirectUploadPartError(
+            directUploadError(xhr, "Upload part failed"),
+            xhr.status,
+          ),
+        )
       }
     })
-    xhr.addEventListener("error", () => reject(new Error("Upload part failed")))
+    xhr.addEventListener("error", () => {
+      cleanup()
+      reject(new DirectUploadPartError("Upload part failed"))
+    })
+    xhr.addEventListener("timeout", () => {
+      cleanup()
+      reject(
+        new DirectUploadPartError(
+          `Upload part timed out after ${DIRECT_UPLOAD_TIMEOUT_MS / 1000}s`,
+          408,
+        ),
+      )
+    })
+    xhr.addEventListener("abort", () => {
+      cleanup()
+      reject(new DirectUploadPartError("Upload canceled", 0, true))
+    })
     xhr.open(method, uploadURL)
+    xhr.timeout = DIRECT_UPLOAD_TIMEOUT_MS
     if (headers) {
       Object.entries(headers).forEach(([key, value]) => {
         xhr.setRequestHeader(key, value)
       })
     }
+    signal.addEventListener("abort", abort, { once: true })
+    if (signal.aborted) {
+      abort()
+      return
+    }
+    onSending()
     if (bodyMode === "multipart") {
       const form = new FormData()
       form.append("file", part, fileName)
@@ -382,6 +610,7 @@ function directUploadError(xhr: XMLHttpRequest, fallback: string): string {
       error?: string
       upstream_code?: string | number
       upstream_message?: string
+      upstream_duration_ms?: number
       cf_colo?: string
       cf_ray?: string
     }
@@ -391,6 +620,9 @@ function directUploadError(xhr: XMLHttpRequest, fallback: string): string {
         ? undefined
         : `code ${body.upstream_code}`,
       body.upstream_message,
+      body.upstream_duration_ms === undefined
+        ? undefined
+        : `upstream ${body.upstream_duration_ms}ms`,
       body.cf_colo ? `colo ${body.cf_colo}` : undefined,
       body.cf_ray ? `ray ${body.cf_ray}` : undefined,
     ].filter(Boolean)

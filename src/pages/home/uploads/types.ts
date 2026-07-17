@@ -2,6 +2,7 @@ type Status =
   | "pending"
   | "hashing"
   | "uploading"
+  | "confirming"
   | "backending"
   | "success"
   | "error"
@@ -18,6 +19,7 @@ export const StatusBadge = {
   pending: "neutral",
   hashing: "warning",
   uploading: "info",
+  confirming: "info",
   backending: "info",
   success: "success",
   error: "danger",
