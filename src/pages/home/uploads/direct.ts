@@ -40,7 +40,6 @@ type UploadContext = {
 const MEBIBYTE = 1024 * 1024
 const DIRECT_UPLOAD_TIMEOUT_MS = 180_000
 const DIRECT_UPLOAD_MAX_ATTEMPTS = 3
-const directUploadSemaphore = new DirectUploadSemaphore(3)
 
 class DirectUploadSemaphore {
   private active = 0
@@ -100,6 +99,8 @@ class DirectUploadSemaphore {
     }
   }
 }
+
+const directUploadSemaphore = new DirectUploadSemaphore(3)
 
 const collectionUpload = (uploadPath: string) => {
   const match = uploadPath.match(/^\/@c\/([^/]+)\/(.+)$/)
