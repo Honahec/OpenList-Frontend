@@ -354,7 +354,7 @@ async function uploadPart(
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve()
       } else {
-        reject(new Error(`Upload part failed with status ${xhr.status}`))
+        reject(new Error(directUploadError(xhr, "Upload part failed")))
       }
     })
     xhr.addEventListener("error", () => reject(new Error("Upload part failed")))
@@ -372,6 +372,36 @@ async function uploadPart(
       xhr.send(part)
     }
   })
+}
+
+function directUploadError(xhr: XMLHttpRequest, fallback: string): string {
+  const status = xhr.status ? ` with status ${xhr.status}` : ""
+  if (!xhr.responseText) return `${fallback}${status}`
+  try {
+    const body = JSON.parse(xhr.responseText) as {
+      error?: string
+      upstream_code?: string | number
+      upstream_message?: string
+      cf_colo?: string
+      cf_ray?: string
+    }
+    const details = [
+      body.error,
+      body.upstream_code === undefined
+        ? undefined
+        : `code ${body.upstream_code}`,
+      body.upstream_message,
+      body.cf_colo ? `colo ${body.cf_colo}` : undefined,
+      body.cf_ray ? `ray ${body.cf_ray}` : undefined,
+    ].filter(Boolean)
+    if (details.length > 0) {
+      return `${fallback}${status}: ${details.join("; ")}`
+    }
+  } catch {
+    const text = xhr.responseText.trim().replace(/\s+/g, " ").slice(0, 500)
+    if (text) return `${fallback}${status}: ${text}`
+  }
+  return `${fallback}${status}`
 }
 
 async function uploadSingle(
@@ -397,7 +427,7 @@ async function uploadSingle(
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve(undefined)
       } else {
-        reject(new Error(`Upload failed with status ${xhr.status}`))
+        reject(new Error(directUploadError(xhr, "Upload failed")))
       }
     })
 
