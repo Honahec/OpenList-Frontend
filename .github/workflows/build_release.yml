@@ -114,6 +114,7 @@ jobs:
         id: generate_changelog
         run: |
           npx changelogithub --output ${{ github.workspace }}-CHANGELOG.txt || echo "" > ${{ github.workspace }}-CHANGELOG.txt
+          node -e 'const fs=require("fs");const p=process.env.GITHUB_WORKSPACE+"-CHANGELOG.txt";const s=fs.readFileSync(p,"utf8");if(Buffer.byteLength(s)>120000){let t=s.slice(0,115000);while(Buffer.byteLength(t)>115000)t=t.slice(0,-1000);fs.writeFileSync(p,t+"\n\n_Changelog truncated to fit the GitHub release notes limit._\n")}'
 
       - name: Build Release
         run: |
