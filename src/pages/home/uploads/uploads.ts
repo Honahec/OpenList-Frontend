@@ -34,6 +34,13 @@ const AllUploads: Uploader[] = [
 export const getUploads = (
   collection = false,
 ): Pick<Uploader, "name" | "upload">[] => {
+  const directUpload = AllUploads.find(
+    (u) => u.name === "HTTP Direct" && u.available(),
+  )
+  if (directUpload) {
+    return [directUpload]
+  }
+
   return AllUploads.filter(
     (u) => u.available() && (!collection || u.name === "HTTP Direct"),
   )
